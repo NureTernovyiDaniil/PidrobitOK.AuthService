@@ -1,0 +1,6 @@
+@PidrobitOK.AuthService_HostAddress = http://localhost:5270
+
+GET {{PidrobitOK.AuthService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
