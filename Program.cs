@@ -81,6 +81,8 @@ builder.Services.AddCors(options =>
     });
 });
 
+builder.Services.AddScoped<JwtTokenService>();
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

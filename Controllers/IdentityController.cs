@@ -14,16 +14,16 @@ namespace AuthService.Controllers
     {
         private readonly UserManager<PidrobitokUser> _userManager;
         private readonly RoleManager<IdentityRole<Guid>> _roleManager;
-        private readonly IConfiguration _configuration;
+        private readonly JwtTokenService _jwtTokenService;
 
         public IdentityController(
             UserManager<PidrobitokUser> userManager,
             RoleManager<IdentityRole<Guid>> roleManager,
-            IConfiguration configuration)
+            JwtTokenService jwtTokenService)
         {
             _userManager = userManager;
             _roleManager = roleManager;
-            _configuration = configuration;
+            _jwtTokenService = jwtTokenService;
         }
 
         [HttpPost("register")]
@@ -68,8 +68,56 @@ namespace AuthService.Controllers
             {
                 return BadRequest("Invalid credentials");
             }
-            return Ok();
+
+            var accessToken = _jwtTokenService.GenerateAccessToken(user);
+            var refreshToken = _jwtTokenService.GenerateRefreshToken();
+
+            user.RefreshToken = refreshToken;
+            user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
+            await _userManager.UpdateAsync(user);
+
+            return Ok(new
+            {
+                Token = accessToken,
+                RefreshToken = refreshToken
+            });
         }
+
+        [HttpPost("refresh")]
+        public async Task<IActionResult> Refresh([FromBody] RefreshTokenResultDto request)
+        {
+            var principal = _jwtTokenService.GetPrincipalFromExpiredToken(request.AccessToken);
+            if (principal == null)
+            {
+                return BadRequest("Invalid access token.");
+            }
+
+            var userIdClaim = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            {
+                return BadRequest("Invalid user ID in token.");
+            }
+
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            if (user == null || user.RefreshToken != request.RefreshToken || user.RefreshTokenExpiryTime < DateTime.UtcNow)
+            {
+                return Unauthorized("Invalid refresh token.");
+            }
+
+            var newAccessToken = _jwtTokenService.GenerateAccessToken(user);
+            var newRefreshToken = _jwtTokenService.GenerateRefreshToken();
+
+            user.RefreshToken = newRefreshToken;
+            user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
+            await _userManager.UpdateAsync(user);
+
+            return Ok(new
+            {
+                Token = newAccessToken,
+                RefreshToken = newRefreshToken
+            });
+        }
+
 
         private async Task EnsureRolesExist()
         {
