@@ -18,10 +18,10 @@ jobs:
         dotnet-version: '8.0.x'
 
     - name: Restore dependencies
-      run: dotnet restore
+      run: dotnet restore PidrobitOK.AuthService/PidrobitOK.AuthService.csproj
 
     - name: Build ASP.NET Core project
-      run: dotnet build --no-restore --configuration Release
+      run: dotnet build PidrobitOK.AuthService/PidrobitOK.AuthService.csproj --no-restore --configuration Release
 
     - name: Log in to Docker Hub using Access Token
       uses: docker/login-action@v2
