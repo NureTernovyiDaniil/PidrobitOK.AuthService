@@ -40,8 +40,6 @@ namespace AuthService.Controllers
                     return BadRequest(ModelState);
                 }
 
-                await EnsureRolesExist();
-
                 var user = new PidrobitokUser
                 {
                     UserName = model.Email,
@@ -186,29 +184,6 @@ namespace AuthService.Controllers
             {
                 _logger.LogError(ex, ex.Message);
                 return BadRequest("An error occurred");
-            }
-        }
-
-
-        private async Task EnsureRolesExist()
-        {
-            try
-            {
-                var roles = new[] { "Student", "Employer", "Admin" };
-
-                foreach (var role in roles)
-                {
-                    var roleExists = await _roleManager.RoleExistsAsync(role);
-                    if (!roleExists)
-                    {
-                        var newRole = new IdentityRole<Guid> { Name = role };
-                        await _roleManager.CreateAsync(newRole);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, ex.Message);
             }
         }
     }

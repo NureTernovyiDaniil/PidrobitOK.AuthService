@@ -8,6 +8,7 @@ using DotNetEnv;
 using PidrobitOK.AuthService.Models;
 using Microsoft.OpenApi.Models;
 using System.Security.Claims;
+using PidrobitOK.AuthService.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -82,6 +83,7 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddScoped<JwtTokenService>();
+builder.Services.AddScoped<StartupTasksService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -139,7 +141,25 @@ using (var scope = app.Services.CreateScope())
     if(builder.Environment.EnvironmentName == "DockerDevelopment")
     {
         var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        dbContext.Database.Migrate();
+        if(dbContext != null)
+        {
+            dbContext.Database.Migrate();
+        }
+        else
+        {
+            throw new Exception("An error occurred while migrating a database to PidrobitOK.AuthService. DbContext is null");
+        }
+    }
+
+    var startupTasksService = scope.ServiceProvider.GetRequiredService<StartupTasksService>();
+    if(startupTasksService != null)
+    {
+        await startupTasksService.EnsureAdminExist();
+        await startupTasksService.EnsureRolesExist();
+    }
+    else
+    {
+        throw new Exception("An error occurred while running a startup tasks to PidrobitOK.AuthService. StartupTasksService is null");
     }
 }
 
