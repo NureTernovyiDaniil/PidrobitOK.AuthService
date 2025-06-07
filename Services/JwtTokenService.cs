@@ -1,4 +1,5 @@
-﻿using Microsoft.IdentityModel.Tokens;
+﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.IdentityModel.Tokens;
 using PidrobitOK.AuthService.Models;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -12,17 +13,30 @@ public class JwtTokenService
     private readonly string _secret = Environment.GetEnvironmentVariable("JWT_SECRET");
     private readonly int _tokenLifetime = int.Parse(Environment.GetEnvironmentVariable("JWT_TOKEN_LIFETIME"));
 
-    public string GenerateAccessToken(PidrobitokUser user)
+    private readonly UserManager<PidrobitokUser> _userManager;
+
+    public JwtTokenService(UserManager<PidrobitokUser> userManager)
+    {
+        _userManager = userManager;
+    }
+
+    public async Task<string> GenerateAccessToken(PidrobitokUser user)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_secret));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
         var claims = new List<Claim>
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new Claim(JwtRegisteredClaimNames.Email, user.Email ?? ""),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         };
+
+        var roles = await _userManager.GetRolesAsync(user);
+
+        foreach (var role in roles)
+        {
+            claims.Add(new Claim(ClaimTypes.Role, role));
+        }
 
         var expires = DateTime.UtcNow.AddMinutes(_tokenLifetime);
 
