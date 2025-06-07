@@ -33,6 +33,6 @@ jobs:
       uses: docker/build-push-action@v4
       with:
         context: .
-        file: ./Dockerfile
+        file: ./PidrobitOK.AuthService/Dockerfile
         push: true
         tags: nureternovyidaniil/pidrobitok-auth-service:latest
