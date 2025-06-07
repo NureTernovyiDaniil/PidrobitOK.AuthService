@@ -1,60 +1,23 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Security.Claims;
-using System.Threading.Tasks;
-using AuthService.Controllers;
-using AuthService.Models;
-using AuthService.Models.DTO;
-using FluentAssertions;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
-using Moq;
-using Xunit;
+﻿using Moq;
 using System.Text.Json;
+using FluentAssertions;
+using AuthService.Models.DTO;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Identity;
 using PidrobitOK.AuthService.Models;
+using PidrobitOK.AuthService_Test.Helpers;
+using PidrobitOK.AuthService.Services;
+using System.Security.Claims;
 
 namespace AuthServiceTest.Controllers
 {
     public class IdentityControllerTests
     {
-        public IdentityControllerTests()
-        {
-            Environment.SetEnvironmentVariable("JWT_ISSUER", "test");
-            Environment.SetEnvironmentVariable("JWT_AUDIENCE", "test");
-            Environment.SetEnvironmentVariable("JWT_SECRET", "supersecretkeysupersecretkey123!");
-            Environment.SetEnvironmentVariable("JWT_TOKEN_LIFETIME", "60");
-            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Testing");
-        }
-
-        private static Mock<UserManager<PidrobitokUser>> MockUserManager()
-        {
-            var store = new Mock<IUserStore<PidrobitokUser>>();
-            return new Mock<UserManager<PidrobitokUser>>(store.Object, null, null, null, null, null, null, null, null);
-        }
-
-        private static Mock<RoleManager<IdentityRole<Guid>>> MockRoleManager()
-        {
-            var store = new Mock<IRoleStore<IdentityRole<Guid>>>();
-            return new Mock<RoleManager<IdentityRole<Guid>>>(store.Object, null, null, null, null);
-        }
-
-        private static IdentityController CreateController(
-            Mock<UserManager<PidrobitokUser>> um,
-            Mock<RoleManager<IdentityRole<Guid>>> rm,
-            JwtTokenService jwt)
-        {
-            var config = new ConfigurationBuilder().Build();
-            return new IdentityController(um.Object, rm.Object, jwt, config);
-        }
-
         [Fact]
         public async Task Register_ShouldReturnBadRequest_WhenModelStateInvalid()
         {
-            var um = MockUserManager();
-            var rm = MockRoleManager();
-            var jwt = new JwtTokenService();
-            var controller = CreateController(um, rm, jwt);
+            
+            var controller = MockHelper.CreateController();
             controller.ModelState.AddModelError("Email", "Required");
             var result = await controller.Register(new RegisterModelDto());
             result.Should().BeOfType<BadRequestObjectResult>();
@@ -63,12 +26,13 @@ namespace AuthServiceTest.Controllers
         [Fact]
         public async Task Register_ShouldReturnBadRequest_WhenUserCreationFails()
         {
-            var um = MockUserManager();
+            var um = MockHelper.MockUserManager();
             um.Setup(x => x.CreateAsync(It.IsAny<PidrobitokUser>(), It.IsAny<string>()))
               .ReturnsAsync(IdentityResult.Failed(new IdentityError { Description = "err" }));
-            var rm = MockRoleManager();
-            var jwt = new JwtTokenService();
-            var controller = CreateController(um, rm, jwt);
+            var rm = MockHelper.MockRoleManager();
+            var jwt = MockHelper.MockJwtTokenService();
+            var logger = MockHelper.MockLogger();
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
             var dto = new RegisterModelDto
             {
                 Email = "e@e.com",
@@ -83,15 +47,16 @@ namespace AuthServiceTest.Controllers
         [Fact]
         public async Task Register_ShouldReturnOk_WhenSuccessful()
         {
-            var um = MockUserManager();
+            var um = MockHelper.MockUserManager();
             um.Setup(x => x.CreateAsync(It.IsAny<PidrobitokUser>(), It.IsAny<string>()))
               .ReturnsAsync(IdentityResult.Success);
             um.Setup(x => x.AddToRoleAsync(It.IsAny<PidrobitokUser>(), It.IsAny<string>()))
               .ReturnsAsync(IdentityResult.Success);
-            var rm = MockRoleManager();
+            var rm = MockHelper.MockRoleManager();
             rm.Setup(x => x.RoleExistsAsync(It.IsAny<string>())).ReturnsAsync(true);
-            var jwt = new JwtTokenService();
-            var controller = CreateController(um, rm, jwt);
+            var jwt = MockHelper.MockJwtTokenService();
+            var logger = MockHelper.MockLogger();
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
             var dto = new RegisterModelDto
             {
                 Email = "e@e.com",
@@ -106,12 +71,13 @@ namespace AuthServiceTest.Controllers
         [Fact]
         public async Task Login_ShouldReturnUnauthorized_WhenUserNotFound()
         {
-            var um = MockUserManager();
+            var um = MockHelper.MockUserManager();
             um.Setup(x => x.FindByEmailAsync(It.IsAny<string>()))
               .ReturnsAsync((PidrobitokUser)null);
-            var rm = MockRoleManager();
-            var jwt = new JwtTokenService();
-            var controller = CreateController(um, rm, jwt);
+            var rm = MockHelper.MockRoleManager();
+            var jwt = MockHelper.MockJwtTokenService();
+            var logger = MockHelper.MockLogger();
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
             var result = await controller.Login(new LoginDto { Email = "x@x", Password = "p" });
             result.Should().BeOfType<UnauthorizedObjectResult>();
         }
@@ -120,12 +86,13 @@ namespace AuthServiceTest.Controllers
         public async Task Login_ShouldReturnUnauthorized_WhenPasswordInvalid()
         {
             var user = new PidrobitokUser();
-            var um = MockUserManager();
+            var um = MockHelper.MockUserManager();
             um.Setup(x => x.FindByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
             um.Setup(x => x.CheckPasswordAsync(user, It.IsAny<string>())).ReturnsAsync(false);
-            var rm = MockRoleManager();
-            var jwt = new JwtTokenService();
-            var controller = CreateController(um, rm, jwt);
+            var rm = MockHelper.MockRoleManager();
+            var jwt = MockHelper.MockJwtTokenService();
+            var logger = MockHelper.MockLogger();
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
             var result = await controller.Login(new LoginDto { Email = "x@x", Password = "p" });
             result.Should().BeOfType<UnauthorizedObjectResult>();
         }
@@ -134,13 +101,15 @@ namespace AuthServiceTest.Controllers
         public async Task Login_ShouldReturnOk_WhenCredentialsValid()
         {
             var user = new PidrobitokUser();
-            var um = MockUserManager();
+            var um = MockHelper.MockUserManager();
             um.Setup(x => x.FindByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
             um.Setup(x => x.CheckPasswordAsync(user, It.IsAny<string>())).ReturnsAsync(true);
             um.Setup(x => x.UpdateAsync(user)).ReturnsAsync(IdentityResult.Success);
-            var rm = MockRoleManager();
-            var jwt = new JwtTokenService();
-            var controller = CreateController(um, rm, jwt);
+            var rm = MockHelper.MockRoleManager();
+            var jwt = MockHelper.MockJwtTokenService();
+            jwt.Setup(x => x.GenerateAccessToken(It.IsAny<PidrobitokUser>())).ReturnsAsync("mocked-access-token");
+            var logger = MockHelper.MockLogger();
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
 
             var result = await controller.Login(new LoginDto { Email = "x@x", Password = "p" });
 
@@ -161,10 +130,11 @@ namespace AuthServiceTest.Controllers
         [Fact]
         public async Task Refresh_ShouldReturnBadRequest_WhenTokenInvalid()
         {
-            var um = MockUserManager();
-            var rm = MockRoleManager();
-            var jwt = new JwtTokenService();
-            var controller = CreateController(um, rm, jwt);
+            var um = MockHelper.MockUserManager();
+            var rm = MockHelper.MockRoleManager();
+            var jwt = MockHelper.MockJwtTokenService();
+            var logger = MockHelper.MockLogger();
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
             var result = await controller.Refresh(new RefreshTokenResultDto
             {
                 AccessToken = "invalid.token",
@@ -177,43 +147,50 @@ namespace AuthServiceTest.Controllers
         public async Task Refresh_ShouldReturnUnauthorized_WhenUserNotFound()
         {
             var userId = Guid.NewGuid();
-            var accessToken = new JwtTokenService().GenerateAccessToken(new PidrobitokUser
-            {
-                Id = userId,
-                Email = "test@example.com"
-            });
+            var um = MockHelper.MockUserManager();
 
-            var principal = new JwtTokenService().GetPrincipalFromExpiredToken(accessToken);
-
-            var um = MockUserManager();
             um.Setup(x => x.FindByIdAsync(userId.ToString())).ReturnsAsync((PidrobitokUser)null);
-            var rm = MockRoleManager();
-            var jwt = new JwtTokenService();
-            var controller = CreateController(um, rm, jwt);
 
-            var result = await controller.Refresh(new RefreshTokenResultDto
+            var rm = MockHelper.MockRoleManager();
+
+            var jwt = new Mock<IJwtTokenService>();
+
+            jwt.Setup(x => x.GetPrincipalFromExpiredToken(It.IsAny<string>()))
+               .Returns(new ClaimsPrincipal(new ClaimsIdentity(new Claim[]
+               {
+           new Claim(ClaimTypes.NameIdentifier, userId.ToString())
+               }, "mock")));
+
+            var logger = MockHelper.MockLogger();
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
+
+            var dto = new RefreshTokenResultDto
             {
-                AccessToken = accessToken,
-                RefreshToken = "invalid"
-            });
+                AccessToken = "some-access-token",
+                RefreshToken = "some-refresh-token"
+            };
+
+            var result = await controller.Refresh(dto);
 
             result.Should().BeOfType<UnauthorizedObjectResult>();
         }
 
 
 
+
         [Fact]
         public async Task Register_ShouldReturnBadRequest_WhenAddToRoleFails()
         {
-            var um = MockUserManager();
+            var um = MockHelper.MockUserManager();
             um.Setup(x => x.CreateAsync(It.IsAny<PidrobitokUser>(), It.IsAny<string>()))
               .ReturnsAsync(IdentityResult.Success);
             um.Setup(x => x.AddToRoleAsync(It.IsAny<PidrobitokUser>(), It.IsAny<string>()))
               .ReturnsAsync(IdentityResult.Failed(new IdentityError { Description = "error" }));
-            var rm = MockRoleManager();
+            var rm = MockHelper.MockRoleManager();
             rm.Setup(x => x.RoleExistsAsync(It.IsAny<string>())).ReturnsAsync(true);
-            var jwt = new JwtTokenService();
-            var controller = CreateController(um, rm, jwt);
+            var jwt = MockHelper.MockJwtTokenService();
+            var logger = MockHelper.MockLogger();
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
 
             var dto = new RegisterModelDto
             {
@@ -229,41 +206,59 @@ namespace AuthServiceTest.Controllers
         }
 
         [Fact]
-        public async Task Login_ShouldReturnOk_EvenIfUpdateFails()
+        public async Task Login_ShouldReturnBadRequest_IfUpdateFails()
         {
             var user = new PidrobitokUser();
-            var um = MockUserManager();
+            var um = MockHelper.MockUserManager();
             um.Setup(x => x.FindByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
             um.Setup(x => x.CheckPasswordAsync(user, It.IsAny<string>())).ReturnsAsync(true);
             um.Setup(x => x.UpdateAsync(user)).ReturnsAsync(IdentityResult.Failed());
-            var rm = MockRoleManager();
-            var jwt = new JwtTokenService();
-            var controller = CreateController(um, rm, jwt);
+            var rm = MockHelper.MockRoleManager();
+            var jwt = MockHelper.MockJwtTokenService();
+            var logger = MockHelper.MockLogger();
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
 
             var result = await controller.Login(new LoginDto { Email = "x@x", Password = "p" });
 
-            result.Should().BeOfType<OkObjectResult>();
+            result.Should().BeOfType<BadRequestObjectResult>();
         }
 
 
         [Fact]
         public async Task Refresh_ShouldReturnUnauthorized_WhenRefreshTokenExpired()
         {
+            var um = MockHelper.MockUserManager();
             var user = new PidrobitokUser
             {
                 Id = Guid.NewGuid(),
                 RefreshToken = "valid",
-                RefreshTokenExpiryTime = DateTime.UtcNow.AddSeconds(-10) // уже истёк
+                RefreshTokenExpiryTime = DateTime.UtcNow.AddSeconds(-10)
             };
 
-            var accessToken = new JwtTokenService().GenerateAccessToken(user);
-            var um = MockUserManager();
             um.Setup(x => x.FindByIdAsync(user.Id.ToString())).ReturnsAsync(user);
-            var rm = MockRoleManager();
-            var jwt = new JwtTokenService();
-            var controller = CreateController(um, rm, jwt);
 
-            var dto = new RefreshTokenResultDto { AccessToken = accessToken, RefreshToken = "valid" };
+            var rm = MockHelper.MockRoleManager();
+
+            var jwt = MockHelper.MockJwtTokenService();
+
+            jwt.Setup(x => x.GetPrincipalFromExpiredToken(It.IsAny<string>()))
+               .Returns(new ClaimsPrincipal(new ClaimsIdentity(new Claim[]
+               {
+           new Claim(ClaimTypes.NameIdentifier, user.Id.ToString())
+               }, "mock")));
+
+            jwt.Setup(x => x.GenerateAccessToken(It.IsAny<PidrobitokUser>()))
+               .ReturnsAsync("mocked-access-token");
+
+            jwt.Setup(x => x.GenerateRefreshToken())
+               .Returns("mocked-refresh-token");
+
+            var logger = MockHelper.MockLogger();
+
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
+
+            var dto = new RefreshTokenResultDto { AccessToken = "some-token", RefreshToken = "valid" };
+
             var result = await controller.Refresh(dto);
 
             result.Should().BeOfType<UnauthorizedObjectResult>();
@@ -272,6 +267,7 @@ namespace AuthServiceTest.Controllers
         [Fact]
         public async Task Refresh_ShouldReturnUnauthorized_WhenRefreshTokenInvalid()
         {
+            var um = MockHelper.MockUserManager();
             var user = new PidrobitokUser
             {
                 Id = Guid.NewGuid(),
@@ -279,23 +275,40 @@ namespace AuthServiceTest.Controllers
                 RefreshTokenExpiryTime = DateTime.UtcNow.AddMinutes(10)
             };
 
-            var accessToken = new JwtTokenService().GenerateAccessToken(user);
-            var um = MockUserManager();
             um.Setup(x => x.FindByIdAsync(user.Id.ToString())).ReturnsAsync(user);
-            var rm = MockRoleManager();
-            var jwt = new JwtTokenService();
-            var controller = CreateController(um, rm, jwt);
 
-            var dto = new RefreshTokenResultDto { AccessToken = accessToken, RefreshToken = "other" };
+            var rm = MockHelper.MockRoleManager();
+
+            var jwt = new Mock<IJwtTokenService>();
+
+            jwt.Setup(x => x.GetPrincipalFromExpiredToken(It.IsAny<string>()))
+               .Returns(new ClaimsPrincipal(new ClaimsIdentity(new Claim[]
+               {
+           new Claim(ClaimTypes.NameIdentifier, user.Id.ToString())
+               }, "mock")));
+
+            jwt.Setup(x => x.GenerateAccessToken(It.IsAny<PidrobitokUser>()))
+               .ReturnsAsync("new-access-token");
+
+            jwt.Setup(x => x.GenerateRefreshToken())
+               .Returns("new-refresh-token");
+
+            var logger = MockHelper.MockLogger();
+
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
+
+            var dto = new RefreshTokenResultDto { AccessToken = "some-token", RefreshToken = "other" }; // "other" != "expected"
+
             var result = await controller.Refresh(dto);
 
             result.Should().BeOfType<UnauthorizedObjectResult>();
         }
 
+
         [Fact]
         public async Task Refresh_ShouldReturnBadRequest_WhenAccessTokenIsMissing()
         {
-            var controller = CreateController(MockUserManager(), MockRoleManager(), new JwtTokenService());
+            var controller = MockHelper.CreateController();
             var dto = new RefreshTokenResultDto { AccessToken = null, RefreshToken = "refresh" };
 
             var result = await controller.Refresh(dto);
@@ -307,7 +320,7 @@ namespace AuthServiceTest.Controllers
         [Fact]
         public async Task Refresh_ShouldReturnBadRequest_WhenRefreshTokenIsMissing()
         {
-            var controller = CreateController(MockUserManager(), MockRoleManager(), new JwtTokenService());
+            var controller = MockHelper.CreateController();
             var dto = new RefreshTokenResultDto { AccessToken = "access", RefreshToken = null };
 
             var result = await controller.Refresh(dto);
@@ -319,8 +332,7 @@ namespace AuthServiceTest.Controllers
         [Fact]
         public async Task Refresh_ShouldReturnBadRequest_WhenAccessTokenInvalid()
         {
-            var jwt = new JwtTokenService();
-            var controller = CreateController(MockUserManager(), MockRoleManager(), jwt);
+            var controller = MockHelper.CreateController();
 
             var dto = new RefreshTokenResultDto
             {
@@ -332,7 +344,5 @@ namespace AuthServiceTest.Controllers
 
             result.Should().BeOfType<BadRequestObjectResult>();
         }
-
-
     }
 }

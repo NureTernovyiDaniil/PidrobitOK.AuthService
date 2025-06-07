@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PidrobitOK.AuthService.Models;
+using PidrobitOK.AuthService.Services;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 
@@ -15,13 +16,13 @@ namespace AuthService.Controllers
     {
         private readonly UserManager<PidrobitokUser> _userManager;
         private readonly RoleManager<IdentityRole<Guid>> _roleManager;
-        private readonly JwtTokenService _jwtTokenService;
+        private readonly IJwtTokenService _jwtTokenService;
         private readonly ILogger<IdentityController> _logger;
 
         public IdentityController(
             UserManager<PidrobitokUser> userManager,
             RoleManager<IdentityRole<Guid>> roleManager,
-            JwtTokenService jwtTokenService,
+            IJwtTokenService jwtTokenService,
             ILogger<IdentityController> logger)
         {
             _userManager = userManager;
@@ -79,7 +80,7 @@ namespace AuthService.Controllers
                 var user = await _userManager.FindByEmailAsync(login.Email);
                 if (user == null || !await _userManager.CheckPasswordAsync(user, login.Password))
                 {
-                    return BadRequest("Invalid credentials");
+                    return Unauthorized("Invalid credentials");
                 }
 
                 var accessToken = await _jwtTokenService.GenerateAccessToken(user);
@@ -87,7 +88,12 @@ namespace AuthService.Controllers
 
                 user.RefreshToken = refreshToken;
                 user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
-                await _userManager.UpdateAsync(user);
+
+                var updateResult = await _userManager.UpdateAsync(user);
+                if (!updateResult.Succeeded)
+                {
+                    return BadRequest("Failed to update user");
+                }
 
                 return Ok(new
                 {
