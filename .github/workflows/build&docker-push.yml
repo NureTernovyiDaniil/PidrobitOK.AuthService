@@ -5,7 +5,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  test:
+  running-tests:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -14,10 +14,10 @@ jobs:
         dotnet-version: '8.0.x'
     - run: dotnet restore PidrobitOK.AuthService/PidrobitOK.AuthService.csproj
     - run: dotnet build PidrobitOK.AuthService/PidrobitOK.AuthService.csproj --no-restore --configuration Release
-    - run: dotnet test PidotbitOK.Auth/PidrobitOK.Auth_Test/PidrobitOK.AuthService_Test.csproj --no-build --verbosity normal
+    - run: dotnet test PidrobitOK.Auth_Test/PidrobitOK.AuthService_Test.csproj --no-build --verbosity normal
 
   build-and-push:
-    needs: test
+    needs: running-tests
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
