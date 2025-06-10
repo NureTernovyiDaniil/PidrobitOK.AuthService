@@ -18,7 +18,7 @@ namespace PidrobitOK.AuthService.Services
 
         public async Task EnsureRolesExist()
         {
-            var roles = new[] { "Student", "Employer", "Admin" };
+            var roles = new[] { "Student", "Employer", "Moderator", "Admin" };
 
             foreach (var role in roles)
             {

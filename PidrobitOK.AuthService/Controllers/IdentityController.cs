@@ -1,11 +1,10 @@
-﻿using AuthService.Models;
-using AuthService.Models.DTO;
+﻿using AuthService.Models.DTO;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PidrobitOK.AuthService.Models;
+using PidrobitOK.AuthService.Models.DTO;
 using PidrobitOK.AuthService.Services;
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 
 namespace AuthService.Controllers
@@ -77,10 +76,20 @@ namespace AuthService.Controllers
         {
             try
             {
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(ModelState);
+                }
+
                 var user = await _userManager.FindByEmailAsync(login.Email);
                 if (user == null || !await _userManager.CheckPasswordAsync(user, login.Password))
                 {
                     return Unauthorized("Invalid credentials");
+                }
+
+                if(user.IsBaned)
+                {
+                    return Unauthorized("You have been banned for violating the platform rules");
                 }
 
                 var accessToken = await _jwtTokenService.GenerateAccessToken(user);
@@ -114,6 +123,11 @@ namespace AuthService.Controllers
         {
             try
             {
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(ModelState);
+                }
+
                 var principal = _jwtTokenService.GetPrincipalFromExpiredToken(request.AccessToken);
                 if (principal == null)
                 {
@@ -155,17 +169,22 @@ namespace AuthService.Controllers
 
         [Authorize(Roles = "Admin")]
         [HttpPost("changeRole")]
-        public async Task<IActionResult> ChangeRole(Guid userId, string roleName)
+        public async Task<IActionResult> ChangeRole([FromBody] ChangeRoleDto changeRoleDto)
         {
             try
             {
-                var user = await _userManager.FindByIdAsync(userId.ToString());
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(ModelState);
+                }
+
+                var user = await _userManager.FindByIdAsync(changeRoleDto.UserId.ToString());
                 if (user == null)
                 {
                     return BadRequest("Invalid user id");
                 }
 
-                var role = await _roleManager.FindByNameAsync(roleName);
+                var role = await _roleManager.FindByNameAsync(changeRoleDto.RoleName);
                 if (role == null)
                 {
                     return BadRequest("Invalid role name");
@@ -178,13 +197,43 @@ namespace AuthService.Controllers
                     return BadRequest("Failed to remove existing roles");
                 }
 
-                var addResult = await _userManager.AddToRoleAsync(user, roleName);
+                var addResult = await _userManager.AddToRoleAsync(user, changeRoleDto.RoleName);
                 if (!addResult.Succeeded)
                 {
                     return BadRequest("Failed to assign new role");
                 }
 
                 return Ok("User role updated successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, ex.Message);
+                return BadRequest("An error occurred");
+            }
+        }
+
+        [Authorize(Roles = "Admin, Moderator")]
+        [HttpPost("banUser")]
+        public async Task<IActionResult> BanUser(Guid userId)
+        {
+            try
+            {
+                var user = await _userManager.FindByIdAsync(userId.ToString());
+                if (user == null)
+                {
+                    return BadRequest("User not found");
+                }
+
+                user.IsBaned = true;
+
+                var updateResult = await _userManager.UpdateAsync(user);
+
+                if (!updateResult.Succeeded) 
+                {
+                    throw new Exception("Error while user updating");
+                }
+
+                return Ok("User successfuly baned");
             }
             catch (Exception ex)
             {

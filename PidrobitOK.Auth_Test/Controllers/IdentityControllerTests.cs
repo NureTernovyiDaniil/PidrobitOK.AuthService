@@ -8,11 +8,15 @@ using PidrobitOK.AuthService.Models;
 using PidrobitOK.AuthService_Test.Helpers;
 using PidrobitOK.AuthService.Services;
 using System.Security.Claims;
+using PidrobitOK.AuthService.Models.DTO;
+using AuthService.Controllers;
+using Microsoft.Extensions.Logging;
 
 namespace AuthServiceTest.Controllers
 {
     public class IdentityControllerTests
     {
+        #region Register
         [Fact]
         public async Task Register_ShouldReturnBadRequest_WhenModelStateInvalid()
         {
@@ -68,6 +72,35 @@ namespace AuthServiceTest.Controllers
             result.Should().BeOfType<OkObjectResult>();
         }
 
+        [Fact]
+        public async Task Register_ShouldReturnBadRequest_WhenAddToRoleFails()
+        {
+            var um = MockHelper.MockUserManager();
+            um.Setup(x => x.CreateAsync(It.IsAny<PidrobitokUser>(), It.IsAny<string>()))
+              .ReturnsAsync(IdentityResult.Success);
+            um.Setup(x => x.AddToRoleAsync(It.IsAny<PidrobitokUser>(), It.IsAny<string>()))
+              .ReturnsAsync(IdentityResult.Failed(new IdentityError { Description = "error" }));
+            var rm = MockHelper.MockRoleManager();
+            rm.Setup(x => x.RoleExistsAsync(It.IsAny<string>())).ReturnsAsync(true);
+            var jwt = MockHelper.MockJwtTokenService();
+            var logger = MockHelper.MockLogger();
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
+
+            var dto = new RegisterModelDto
+            {
+                Email = "e@e.com",
+                Password = "123456",
+                FirstName = "f",
+                LastName = "l"
+            };
+
+            var result = await controller.Register(dto);
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+        #endregion
+
+        #region Login
         [Fact]
         public async Task Login_ShouldReturnUnauthorized_WhenUserNotFound()
         {
@@ -126,7 +159,26 @@ namespace AuthServiceTest.Controllers
             refresh.GetString().Should().NotBeNullOrWhiteSpace();
         }
 
+        [Fact]
+        public async Task Login_ShouldReturnBadRequest_IfUpdateFails()
+        {
+            var user = new PidrobitokUser();
+            var um = MockHelper.MockUserManager();
+            um.Setup(x => x.FindByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
+            um.Setup(x => x.CheckPasswordAsync(user, It.IsAny<string>())).ReturnsAsync(true);
+            um.Setup(x => x.UpdateAsync(user)).ReturnsAsync(IdentityResult.Failed());
+            var rm = MockHelper.MockRoleManager();
+            var jwt = MockHelper.MockJwtTokenService();
+            var logger = MockHelper.MockLogger();
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
 
+            var result = await controller.Login(new LoginDto { Email = "x@x", Password = "p" });
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+        #endregion
+
+        #region Refresh
         [Fact]
         public async Task Refresh_ShouldReturnBadRequest_WhenTokenInvalid()
         {
@@ -174,55 +226,6 @@ namespace AuthServiceTest.Controllers
 
             result.Should().BeOfType<UnauthorizedObjectResult>();
         }
-
-
-
-
-        [Fact]
-        public async Task Register_ShouldReturnBadRequest_WhenAddToRoleFails()
-        {
-            var um = MockHelper.MockUserManager();
-            um.Setup(x => x.CreateAsync(It.IsAny<PidrobitokUser>(), It.IsAny<string>()))
-              .ReturnsAsync(IdentityResult.Success);
-            um.Setup(x => x.AddToRoleAsync(It.IsAny<PidrobitokUser>(), It.IsAny<string>()))
-              .ReturnsAsync(IdentityResult.Failed(new IdentityError { Description = "error" }));
-            var rm = MockHelper.MockRoleManager();
-            rm.Setup(x => x.RoleExistsAsync(It.IsAny<string>())).ReturnsAsync(true);
-            var jwt = MockHelper.MockJwtTokenService();
-            var logger = MockHelper.MockLogger();
-            var controller = MockHelper.CreateController(um, rm, jwt, logger);
-
-            var dto = new RegisterModelDto
-            {
-                Email = "e@e.com",
-                Password = "123456",
-                FirstName = "f",
-                LastName = "l"
-            };
-
-            var result = await controller.Register(dto);
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-        }
-
-        [Fact]
-        public async Task Login_ShouldReturnBadRequest_IfUpdateFails()
-        {
-            var user = new PidrobitokUser();
-            var um = MockHelper.MockUserManager();
-            um.Setup(x => x.FindByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
-            um.Setup(x => x.CheckPasswordAsync(user, It.IsAny<string>())).ReturnsAsync(true);
-            um.Setup(x => x.UpdateAsync(user)).ReturnsAsync(IdentityResult.Failed());
-            var rm = MockHelper.MockRoleManager();
-            var jwt = MockHelper.MockJwtTokenService();
-            var logger = MockHelper.MockLogger();
-            var controller = MockHelper.CreateController(um, rm, jwt, logger);
-
-            var result = await controller.Login(new LoginDto { Email = "x@x", Password = "p" });
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-        }
-
 
         [Fact]
         public async Task Refresh_ShouldReturnUnauthorized_WhenRefreshTokenExpired()
@@ -344,5 +347,192 @@ namespace AuthServiceTest.Controllers
 
             result.Should().BeOfType<BadRequestObjectResult>();
         }
+        #endregion
+        
+        #region ChangeRole
+
+        [Fact]
+        public async Task ChangeRole_ShouldReturnBadRequest_WhenModelStateInvalid()
+        {
+            var controller = MockHelper.CreateController();
+            controller.ModelState.AddModelError("UserId", "Required");
+
+            var result = await controller.ChangeRole(new ChangeRoleDto());
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
+        public async Task ChangeRole_ShouldReturnBadRequest_WhenUserNotFound()
+        {
+            var um = MockHelper.MockUserManager();
+            um.Setup(x => x.FindByIdAsync(It.IsAny<string>())).ReturnsAsync((PidrobitokUser)null);
+            
+            var controller = MockHelper.CreateController(um);
+
+            var result = await controller.ChangeRole(new ChangeRoleDto
+            {
+                UserId = Guid.NewGuid(),
+                RoleName = "Admin"
+            });
+
+            result.Should().BeOfType<BadRequestObjectResult>().Which.Value.Should().Be("Invalid user id");
+        }
+
+        [Fact]
+        public async Task ChangeRole_ShouldReturnBadRequest_WhenRoleNotFound()
+        {
+            var user = new PidrobitokUser();
+            var um = MockHelper.MockUserManager();
+            um.Setup(x => x.FindByIdAsync(It.IsAny<string>())).ReturnsAsync(user);
+
+            var rm = MockHelper.MockRoleManager();
+            rm.Setup(x => x.FindByNameAsync(It.IsAny<string>())).ReturnsAsync((PidrobitokRole)null);
+
+            var jwt = MockHelper.MockJwtTokenService();
+            var logger = MockHelper.MockLogger();
+
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
+
+            var dto = new ChangeRoleDto
+            {
+                UserId = Guid.NewGuid(),
+                RoleName = "NonExistentRole"
+            };
+
+            var result = await controller.ChangeRole(dto);
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+            var badRequest = result as BadRequestObjectResult;
+            badRequest.Value.Should().Be("Invalid role name");
+        }
+
+
+        [Fact]
+        public async Task ChangeRole_ShouldReturnBadRequest_WhenRemovingRolesFails()
+        {
+            var user = new PidrobitokUser();
+            var um = MockHelper.MockUserManager();
+            um.Setup(x => x.FindByIdAsync(It.IsAny<string>())).ReturnsAsync(user);
+            um.Setup(x => x.GetRolesAsync(user)).ReturnsAsync(new List<string> { "User" });
+            um.Setup(x => x.RemoveFromRolesAsync(user, It.IsAny<IEnumerable<string>>()))
+              .ReturnsAsync(IdentityResult.Failed());
+
+            var rm = MockHelper.MockRoleManager();
+            rm.Setup(x => x.FindByNameAsync(It.IsAny<string>())).ReturnsAsync(new PidrobitokRole());
+
+            var jwt = new Mock<IJwtTokenService>();
+            var logger = new Mock<ILogger<IdentityController>>();
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
+
+            var result = await controller.ChangeRole(new ChangeRoleDto
+            {
+                UserId = Guid.NewGuid(),
+                RoleName = "Admin"
+            });
+
+            result.Should().BeOfType<BadRequestObjectResult>().Which.Value.Should().Be("Failed to remove existing roles");
+        }
+
+        [Fact]
+        public async Task ChangeRole_ShouldReturnBadRequest_WhenAddingRoleFails()
+        {
+            var user = new PidrobitokUser();
+            var um = MockHelper.MockUserManager();
+            um.Setup(x => x.FindByIdAsync(It.IsAny<string>())).ReturnsAsync(user);
+            um.Setup(x => x.GetRolesAsync(user)).ReturnsAsync(new List<string> { "User" });
+            um.Setup(x => x.RemoveFromRolesAsync(user, It.IsAny<IEnumerable<string>>()))
+              .ReturnsAsync(IdentityResult.Success);
+            um.Setup(x => x.AddToRoleAsync(user, It.IsAny<string>()))
+              .ReturnsAsync(IdentityResult.Failed());
+
+            var rm = MockHelper.MockRoleManager();
+            rm.Setup(x => x.FindByNameAsync(It.IsAny<string>())).ReturnsAsync(new PidrobitokRole());
+
+            var jwt = new Mock<IJwtTokenService>();
+            var logger = new Mock<ILogger<IdentityController>>();
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
+
+            var result = await controller.ChangeRole(new ChangeRoleDto
+            {
+                UserId = Guid.NewGuid(),
+                RoleName = "Admin"
+            });
+
+            result.Should().BeOfType<BadRequestObjectResult>().Which.Value.Should().Be("Failed to assign new role");
+        }
+
+        [Fact]
+        public async Task ChangeRole_ShouldReturnOk_WhenSuccessful()
+        {
+            var user = new PidrobitokUser();
+            var um = MockHelper.MockUserManager();
+            um.Setup(x => x.FindByIdAsync(It.IsAny<string>())).ReturnsAsync(user);
+            um.Setup(x => x.GetRolesAsync(user)).ReturnsAsync(new List<string> { "User" });
+            um.Setup(x => x.RemoveFromRolesAsync(user, It.IsAny<IEnumerable<string>>()))
+              .ReturnsAsync(IdentityResult.Success);
+            um.Setup(x => x.AddToRoleAsync(user, It.IsAny<string>()))
+              .ReturnsAsync(IdentityResult.Success);
+
+            var rm = MockHelper.MockRoleManager();
+            rm.Setup(x => x.FindByNameAsync(It.IsAny<string>())).ReturnsAsync(new PidrobitokRole());
+
+            var jwt = new Mock<IJwtTokenService>();
+            var logger = new Mock<ILogger<IdentityController>>();
+            var controller = MockHelper.CreateController(um, rm, jwt, logger);
+
+            var result = await controller.ChangeRole(new ChangeRoleDto
+            {
+                UserId = Guid.NewGuid(),
+                RoleName = "Admin"
+            });
+
+            result.Should().BeOfType<OkObjectResult>().Which.Value.Should().Be("User role updated successfully");
+        }
+        #endregion
+
+        #region BanUser
+        [Fact]
+        public async Task BanUser_ShouldReturnBadRequest_WhenUserNotFound()
+        {
+            var um = MockHelper.MockUserManager();
+            um.Setup(x => x.FindByIdAsync(It.IsAny<string>())).ReturnsAsync((PidrobitokUser)null);
+            var controller = MockHelper.CreateController(um);
+
+            var result = await controller.BanUser(Guid.NewGuid());
+
+            result.Should().BeOfType<BadRequestObjectResult>().Which.Value.Should().Be("User not found");
+        }
+
+        [Fact]
+        public async Task BanUser_ShouldReturnOk_WhenUserSuccessfullyBanned()
+        {
+            var user = new PidrobitokUser();
+            var um = MockHelper.MockUserManager();
+            um.Setup(x => x.FindByIdAsync(It.IsAny<string>())).ReturnsAsync(user);
+            um.Setup(x => x.UpdateAsync(user)).ReturnsAsync(IdentityResult.Success);
+
+            var controller = MockHelper.CreateController(um);
+
+            var result = await controller.BanUser(Guid.NewGuid());
+
+            result.Should().BeOfType<OkObjectResult>().Which.Value.Should().Be("User successfuly baned");
+        }
+
+        [Fact]
+        public async Task BanUser_ShouldReturnBadRequest_WhenUpdateFails()
+        {
+            var user = new PidrobitokUser();
+            var um = MockHelper.MockUserManager();
+            um.Setup(x => x.FindByIdAsync(It.IsAny<string>())).ReturnsAsync(user);
+            um.Setup(x => x.UpdateAsync(user)).ReturnsAsync(IdentityResult.Failed());
+
+            var controller = MockHelper.CreateController(um);
+
+            var result = await controller.BanUser(Guid.NewGuid());
+
+            result.Should().BeOfType<BadRequestObjectResult>().Which.Value.Should().Be("An error occurred");
+        }
+        #endregion
     }
 }

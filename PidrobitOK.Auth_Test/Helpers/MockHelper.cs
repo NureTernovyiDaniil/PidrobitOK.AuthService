@@ -27,7 +27,6 @@ namespace PidrobitOK.AuthService_Test.Helpers
             return jwt;
         }
 
-
         public static Mock<UserManager<PidrobitokUser>> MockUserManager()
         {
             var store = new Mock<IUserStore<PidrobitokUser>>();
@@ -41,11 +40,28 @@ namespace PidrobitOK.AuthService_Test.Helpers
         }
 
         public static IdentityController CreateController(
-            Mock<UserManager<PidrobitokUser>> um,
-            Mock<RoleManager<IdentityRole<Guid>>> rm,
-            Mock<IJwtTokenService> jwt,
-            Mock<ILogger<IdentityController>> logger)
+            Mock<UserManager<PidrobitokUser>> um = null,
+            Mock<RoleManager<IdentityRole<Guid>>> rm = null,
+            Mock<IJwtTokenService> jwt = null,
+            Mock<ILogger<IdentityController>> logger = null)
         {
+            if(um == null)
+            {
+                um = MockUserManager();
+            }
+            if(rm == null)
+            {
+                rm = MockRoleManager();
+            }
+            if(jwt == null)
+            {
+                jwt = MockJwtTokenService();
+            }
+            if(logger == null)
+            {
+                logger = MockLogger();
+            }
+
             return new IdentityController(um.Object, rm.Object, jwt.Object, logger.Object);
         }
 
