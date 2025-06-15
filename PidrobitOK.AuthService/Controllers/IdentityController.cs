@@ -167,6 +167,19 @@ namespace AuthService.Controllers
             return BadRequest("An error occurred");
         }
 
+        [Authorize]
+        [HttpGet("getUserInfo/{userId}")]
+        public async Task<IActionResult> GetUserInfo(Guid userId)
+        {
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            if(user != null)
+            {
+                return Ok(new UserInfoDto() { Email = user.Email, FirstName = user.FirstName, LastName = user.LastName });
+            }
+
+            return NotFound();
+        }
+
         [Authorize(Roles = "Admin")]
         [HttpPost("changeRole")]
         public async Task<IActionResult> ChangeRole([FromBody] ChangeRoleDto changeRoleDto)
