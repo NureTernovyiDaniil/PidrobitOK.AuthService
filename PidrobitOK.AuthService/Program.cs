@@ -105,7 +105,7 @@ public class Program
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen(c =>
         {
-            c.SwaggerDoc("v1", new OpenApiInfo { Title = "JobService", Version = "v1" });
+            c.SwaggerDoc("v1", new OpenApiInfo { Title = "AuthService", Version = "v1" });
 
             c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
             {
