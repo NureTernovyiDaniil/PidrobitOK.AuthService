@@ -170,8 +170,8 @@ public class Program
             var startupTasksService = scope.ServiceProvider.GetRequiredService<StartupTasksService>();
             if (startupTasksService != null)
             {
-                await startupTasksService.EnsureAdminExist();
                 await startupTasksService.EnsureRolesExist();
+                await startupTasksService.EnsureAdminExist();
             }
             else
             {
