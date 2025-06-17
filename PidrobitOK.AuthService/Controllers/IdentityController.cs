@@ -146,7 +146,7 @@ namespace AuthService.Controllers
                     return Unauthorized("Invalid refresh token.");
                 }
 
-                var newAccessToken = _jwtTokenService.GenerateAccessToken(user);
+                var newAccessToken = await _jwtTokenService.GenerateAccessToken(user);
                 var newRefreshToken = _jwtTokenService.GenerateRefreshToken();
 
                 user.RefreshToken = newRefreshToken;
